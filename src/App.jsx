@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import "./App.css";
 
 
-const API_URL =
+const API_URL = (
   import.meta.env.VITE_API_URL ||
-  "http://localhost:8000";
+  "http://localhost:8000"
+).replace(/\/$/, "");
 
 
 const PENDING_UPLOAD_KEY =
@@ -12,6 +13,113 @@ const PENDING_UPLOAD_KEY =
 
 
 let refreshPromise = null;
+
+
+// --------------------------------------------------
+// ПРЕОБРАЗОВАНИЕ ОШИБКИ FASTAPI В НОРМАЛЬНЫЙ ТЕКСТ
+// --------------------------------------------------
+
+function getApiErrorMessage(
+  data,
+  status
+) {
+  if (!data) {
+    return `Ошибка ${status}`;
+  }
+
+
+  // Обычная FastAPI ошибка:
+  //
+  // {
+  //   "detail": "Invalid username or password"
+  // }
+  if (
+    typeof data.detail ===
+    "string"
+  ) {
+    return data.detail;
+  }
+
+
+  // Pydantic / FastAPI validation error:
+  //
+  // {
+  //   "detail": [
+  //     {
+  //       "loc": ["body", "password"],
+  //       "msg": "...",
+  //       "type": "..."
+  //     }
+  //   ]
+  // }
+  if (
+    Array.isArray(
+      data.detail
+    )
+  ) {
+    return data.detail
+      .map((item) => {
+        const location =
+          Array.isArray(item.loc)
+            ? item.loc
+                .filter(
+                  (part) =>
+                    part !== "body"
+                )
+                .join(" → ")
+            : "";
+
+
+        const message =
+          item.msg ||
+          "Ошибка валидации";
+
+
+        if (location) {
+          return `${location}: ${message}`;
+        }
+
+
+        return message;
+      })
+      .join("; ");
+  }
+
+
+  // Иногда detail может быть объектом.
+  if (
+    data.detail &&
+    typeof data.detail ===
+      "object"
+  ) {
+    if (
+      typeof data.detail.message ===
+      "string"
+    ) {
+      return data.detail.message;
+    }
+
+
+    try {
+      return JSON.stringify(
+        data.detail
+      );
+    } catch {
+      return `Ошибка ${status}`;
+    }
+  }
+
+
+  if (
+    typeof data.message ===
+    "string"
+  ) {
+    return data.message;
+  }
+
+
+  return `Ошибка ${status}`;
+}
 
 
 // --------------------------------------------------
@@ -27,12 +135,16 @@ async function refreshAccessToken() {
         credentials: "include",
       }
     )
-      .then((response) => response.ok)
+      .then(
+        (response) =>
+          response.ok
+      )
       .catch(() => false)
       .finally(() => {
         refreshPromise = null;
       });
   }
+
 
   return refreshPromise;
 }
@@ -48,6 +160,7 @@ async function apiRequest(
   tryRefresh = true
 ) {
   let response;
+
 
   try {
     response = await fetch(
@@ -65,19 +178,26 @@ async function apiRequest(
               }
             : {}),
 
-          ...(options.headers || {}),
+          ...(options.headers ||
+            {}),
         },
       }
     );
-  } catch {
+  } catch (networkError) {
+    console.error(
+      "Backend connection error:",
+      networkError
+    );
+
+
     throw new Error(
       "Не удалось подключиться к backend"
     );
   }
 
 
-  // Access token протух.
-  // Пробуем получить новый через refresh cookie.
+  // Если access token протух,
+  // пробуем refresh token.
   if (
     response.status === 401 &&
     tryRefresh &&
@@ -87,6 +207,7 @@ async function apiRequest(
   ) {
     const refreshed =
       await refreshAccessToken();
+
 
     if (refreshed) {
       return apiRequest(
@@ -100,18 +221,21 @@ async function apiRequest(
 
   let data = null;
 
+
   try {
-    data = await response.json();
+    data =
+      await response.json();
   } catch {
-    // Ответ может быть пустым.
+    data = null;
   }
 
 
   if (!response.ok) {
     throw new Error(
-      data?.detail ||
-        data?.message ||
-        `Ошибка ${response.status}`
+      getApiErrorMessage(
+        data,
+        response.status
+      )
     );
   }
 
@@ -121,7 +245,7 @@ async function apiRequest(
 
 
 // --------------------------------------------------
-// ФОРМАТИРОВАНИЕ
+// ФОРМАТИРОВАНИЕ РАЗМЕРА
 // --------------------------------------------------
 
 function formatBytes(bytes) {
@@ -148,7 +272,8 @@ function formatBytes(bytes) {
 
   while (
     value >= 1000 &&
-    unitIndex < units.length - 1
+    unitIndex <
+      units.length - 1
   ) {
     value /= 1000;
     unitIndex++;
@@ -165,10 +290,15 @@ function formatBytes(bytes) {
 }
 
 
+// --------------------------------------------------
+// ФОРМАТИРОВАНИЕ ДАТЫ
+// --------------------------------------------------
+
 function formatDate(date) {
   if (!date) {
     return "";
   }
+
 
   return new Date(
     date
@@ -181,8 +311,11 @@ function formatDate(date) {
 // --------------------------------------------------
 
 function App() {
-  const [user, setUser] =
-    useState(null);
+  const [
+    user,
+    setUser,
+  ] = useState(null);
+
 
   const [
     loadingUser,
@@ -197,20 +330,24 @@ function App() {
     setAuthMode,
   ] = useState("login");
 
+
   const [
     username,
     setUsername,
   ] = useState("");
+
 
   const [
     password,
     setPassword,
   ] = useState("");
 
+
   const [
     repeatPassword,
     setRepeatPassword,
   ] = useState("");
+
 
   const [
     authLoading,
@@ -220,13 +357,17 @@ function App() {
 
   // FILES
 
-  const [files, setFiles] =
-    useState([]);
+  const [
+    files,
+    setFiles,
+  ] = useState([]);
+
 
   const [
     storage,
     setStorage,
   ] = useState(null);
+
 
   const [
     dataLoading,
@@ -241,10 +382,12 @@ function App() {
     setSelectedFile,
   ] = useState(null);
 
+
   const [
     uploadProgress,
     setUploadProgress,
   ] = useState(0);
+
 
   const [
     uploading,
@@ -258,6 +401,7 @@ function App() {
     message,
     setMessage,
   ] = useState("");
+
 
   const [
     error,
@@ -277,12 +421,14 @@ function App() {
 
       if (!authenticated) {
         setLoadingUser(false);
+
         return;
       }
 
 
-      // Если до F5 шла загрузка,
-      // React найдёт её ID в localStorage.
+      // Если пользователь обновил страницу
+      // во время загрузки большого файла,
+      // здесь останется pending ID.
       const pendingId =
         localStorage.getItem(
           PENDING_UPLOAD_KEY
@@ -297,9 +443,11 @@ function App() {
               method: "DELETE",
             }
           );
-        } catch (cleanupError) {
+        } catch (
+          cleanupError
+        ) {
           console.error(
-            "Не удалось очистить старый pending:",
+            "Не удалось очистить pending upload:",
             cleanupError
           );
         } finally {
@@ -321,19 +469,26 @@ function App() {
 
 
   // --------------------------------------------------
-  // ТЕКУЩИЙ ПОЛЬЗОВАТЕЛЬ
+  // ПРОВЕРКА ТЕКУЩЕЙ СЕССИИ
   // --------------------------------------------------
 
   async function checkCurrentUser() {
     try {
       const currentUser =
-        await apiRequest("/auth/me");
+        await apiRequest(
+          "/auth/me"
+        );
 
-      setUser(currentUser);
+
+      setUser(
+        currentUser
+      );
+
 
       return true;
     } catch {
       setUser(null);
+
 
       return false;
     }
@@ -341,26 +496,41 @@ function App() {
 
 
   // --------------------------------------------------
-  // ЗАГРУЗИТЬ ФАЙЛЫ + STORAGE
+  // ЗАГРУЗКА СПИСКА ФАЙЛОВ И STORAGE
   // --------------------------------------------------
 
   async function loadData() {
     setDataLoading(true);
 
+
     try {
       const [
         fileList,
         storageData,
-      ] = await Promise.all([
-        apiRequest("/files"),
-        apiRequest("/files/storage"),
-      ]);
+      ] =
+        await Promise.all([
+          apiRequest(
+            "/files"
+          ),
+
+          apiRequest(
+            "/files/storage"
+          ),
+        ]);
 
 
-      setFiles(fileList);
-      setStorage(storageData);
+      setFiles(
+        fileList
+      );
+
+
+      setStorage(
+        storageData
+      );
     } catch (err) {
-      setError(err.message);
+      setError(
+        err.message
+      );
     } finally {
       setDataLoading(false);
     }
@@ -371,19 +541,24 @@ function App() {
   // REGISTER
   // --------------------------------------------------
 
-  async function handleRegister(event) {
+  async function handleRegister(
+    event
+  ) {
     event.preventDefault();
+
 
     setError("");
     setMessage("");
 
 
     if (
-      password !== repeatPassword
+      password !==
+      repeatPassword
     ) {
       setError(
         "Пароли не совпадают"
       );
+
 
       return;
     }
@@ -398,12 +573,13 @@ function App() {
         {
           method: "POST",
 
-          body: JSON.stringify({
-            username:
-              username.trim(),
+          body:
+            JSON.stringify({
+              username:
+                username.trim(),
 
-            password,
-          }),
+              password,
+            }),
         }
       );
 
@@ -412,12 +588,24 @@ function App() {
         "Аккаунт создан. Теперь войди."
       );
 
-      setAuthMode("login");
+
+      setAuthMode(
+        "login"
+      );
+
 
       setPassword("");
       setRepeatPassword("");
     } catch (err) {
-      setError(err.message);
+      console.error(
+        "Register error:",
+        err
+      );
+
+
+      setError(
+        err.message
+      );
     } finally {
       setAuthLoading(false);
     }
@@ -428,11 +616,15 @@ function App() {
   // LOGIN
   // --------------------------------------------------
 
-  async function handleLogin(event) {
+  async function handleLogin(
+    event
+  ) {
     event.preventDefault();
+
 
     setError("");
     setMessage("");
+
 
     setAuthLoading(true);
 
@@ -443,12 +635,13 @@ function App() {
         {
           method: "POST",
 
-          body: JSON.stringify({
-            username:
-              username.trim(),
+          body:
+            JSON.stringify({
+              username:
+                username.trim(),
 
-            password,
-          }),
+              password,
+            }),
         }
       );
 
@@ -459,14 +652,15 @@ function App() {
         );
 
 
-      setUser(currentUser);
+      setUser(
+        currentUser
+      );
+
 
       setUsername("");
       setPassword("");
 
 
-      // Если остался мусорный pending
-      // от предыдущего запуска.
       const pendingId =
         localStorage.getItem(
           PENDING_UPLOAD_KEY
@@ -478,12 +672,18 @@ function App() {
           await apiRequest(
             `/files/${pendingId}/pending`,
             {
-              method: "DELETE",
+              method:
+                "DELETE",
             }
           );
-        } catch {
-          // backend cleanup потом подстрахует
+        } catch (
+          cleanupError
+        ) {
+          console.error(
+            cleanupError
+          );
         }
+
 
         localStorage.removeItem(
           PENDING_UPLOAD_KEY
@@ -493,7 +693,15 @@ function App() {
 
       await loadData();
     } catch (err) {
-      setError(err.message);
+      console.error(
+        "Login error:",
+        err
+      );
+
+
+      setError(
+        err.message
+      );
     } finally {
       setAuthLoading(false);
     }
@@ -509,8 +717,6 @@ function App() {
     setMessage("");
 
 
-    // Если прямо сейчас есть pending,
-    // сначала пытаемся его убрать.
     const pendingId =
       localStorage.getItem(
         PENDING_UPLOAD_KEY
@@ -526,8 +732,10 @@ function App() {
           }
         );
       } catch {
-        //
+        // backend cleanup потом
+        // подстрахует.
       }
+
 
       localStorage.removeItem(
         PENDING_UPLOAD_KEY
@@ -548,11 +756,15 @@ function App() {
 
 
     setUser(null);
+
     setFiles([]);
+
     setStorage(null);
 
     setSelectedFile(null);
+
     setUploadProgress(0);
+
 
     setMessage(
       "Ты вышел из аккаунта"
@@ -561,7 +773,7 @@ function App() {
 
 
   // --------------------------------------------------
-  // ЗАГРУЗКА ФАЙЛА НАПРЯМУЮ В R2
+  // ПРЯМАЯ ЗАГРУЗКА В R2
   // --------------------------------------------------
 
   function uploadFileToR2(
@@ -569,7 +781,10 @@ function App() {
     file
   ) {
     return new Promise(
-      (resolve, reject) => {
+      (
+        resolve,
+        reject
+      ) => {
         const xhr =
           new XMLHttpRequest();
 
@@ -580,9 +795,6 @@ function App() {
         );
 
 
-        // Должен совпасть с Content-Type,
-        // который использовался при создании
-        // presigned URL.
         if (file.type) {
           xhr.setRequestHeader(
             "Content-Type",
@@ -604,6 +816,7 @@ function App() {
                   ) *
                     100
                 );
+
 
               setUploadProgress(
                 percent
@@ -653,7 +866,7 @@ function App() {
 
 
   // --------------------------------------------------
-  // ОТМЕНИТЬ PENDING
+  // ОТМЕНА PENDING
   // --------------------------------------------------
 
   async function cancelPendingUpload(
@@ -671,7 +884,9 @@ function App() {
           method: "DELETE",
         }
       );
-    } catch (cancelError) {
+    } catch (
+      cancelError
+    ) {
       console.error(
         "Не удалось отменить pending:",
         cancelError
@@ -683,7 +898,9 @@ function App() {
         );
 
 
-      if (savedId === fileId) {
+      if (
+        savedId === fileId
+      ) {
         localStorage.removeItem(
           PENDING_UPLOAD_KEY
         );
@@ -693,7 +910,7 @@ function App() {
 
 
   // --------------------------------------------------
-  // UPLOAD FLOW
+  // ПОЛНЫЙ UPLOAD FLOW
   // --------------------------------------------------
 
   async function handleUpload() {
@@ -708,16 +925,17 @@ function App() {
     setError("");
     setMessage("");
 
+
     setUploading(true);
+
     setUploadProgress(0);
 
 
-    let preparedFileId = null;
+    let preparedFileId =
+      null;
 
 
     try {
-      // Быстрая frontend-проверка.
-      // Backend всё равно проверит ещё раз.
       if (
         storage &&
         selectedFile.size >
@@ -731,25 +949,27 @@ function App() {
       }
 
 
-      // 1. Просим FastAPI зарезервировать место
-      // и выдать signed URL.
+      // 1.
+      // Backend резервирует место
+      // и выдаёт presigned URL.
       const prepared =
         await apiRequest(
           "/files/upload-url",
           {
             method: "POST",
 
-            body: JSON.stringify({
-              original_name:
-                selectedFile.name,
+            body:
+              JSON.stringify({
+                original_name:
+                  selectedFile.name,
 
-              size:
-                selectedFile.size,
+                size:
+                  selectedFile.size,
 
-              content_type:
-                selectedFile.type ||
-                null,
-            }),
+                content_type:
+                  selectedFile.type ||
+                  null,
+              }),
           }
         );
 
@@ -758,30 +978,26 @@ function App() {
         prepared.file.id;
 
 
-      // Запоминаем pending.
-      // Если пользователь нажмёт F5,
-      // после перезагрузки React его отменит.
       localStorage.setItem(
         PENDING_UPLOAD_KEY,
         preparedFileId
       );
 
 
-      // Обновляем storage сразу:
-      // пользователь увидит резерв места.
       await loadData();
 
 
-      // 2. Реальный файл идёт напрямую:
-      // browser -> Cloudflare R2
+      // 2.
+      // Файл идёт напрямую
+      // browser -> Cloudflare R2.
       await uploadFileToR2(
         prepared.upload_url,
         selectedFile
       );
 
 
-      // 3. Сообщаем backend,
-      // что загрузка закончилась.
+      // 3.
+      // Подтверждаем загрузку.
       await apiRequest(
         `/files/${preparedFileId}/confirm`,
         {
@@ -790,7 +1006,6 @@ function App() {
       );
 
 
-      // Теперь pending превратился в ready.
       localStorage.removeItem(
         PENDING_UPLOAD_KEY
       );
@@ -800,22 +1015,38 @@ function App() {
         "Файл успешно загружен"
       );
 
-      setSelectedFile(null);
-      setUploadProgress(100);
+
+      setSelectedFile(
+        null
+      );
+
+
+      setUploadProgress(
+        100
+      );
 
 
       await loadData();
     } catch (err) {
-      // Если что-либо сломалось во время upload,
-      // мгновенно освобождаем резерв.
-      if (preparedFileId) {
+      console.error(
+        "Upload error:",
+        err
+      );
+
+
+      if (
+        preparedFileId
+      ) {
         await cancelPendingUpload(
           preparedFileId
         );
       }
 
 
-      setError(err.message);
+      setError(
+        err.message
+      );
+
 
       await loadData();
     } finally {
@@ -842,14 +1073,15 @@ function App() {
         );
 
 
-      // Не открываем новую вкладку.
-      // Создаём временную ссылку и кликаем.
       const link =
-        document.createElement("a");
+        document.createElement(
+          "a"
+        );
 
 
       link.href =
         result.download_url;
+
 
       link.style.display =
         "none";
@@ -865,7 +1097,9 @@ function App() {
 
       link.remove();
     } catch (err) {
-      setError(err.message);
+      setError(
+        err.message
+      );
     }
   }
 
@@ -908,13 +1142,15 @@ function App() {
 
       await loadData();
     } catch (err) {
-      setError(err.message);
+      setError(
+        err.message
+      );
     }
   }
 
 
   // --------------------------------------------------
-  // LOADING SCREEN
+  // LOADING
   // --------------------------------------------------
 
   if (loadingUser) {
@@ -931,7 +1167,7 @@ function App() {
 
 
   // --------------------------------------------------
-  // LOGIN / REGISTER SCREEN
+  // LOGIN / REGISTER
   // --------------------------------------------------
 
   if (!user) {
@@ -948,11 +1184,13 @@ function App() {
               CLOUDFILE
             </span>
 
+
             <h1>
               Твоё личное
               <br />
               облачное хранилище.
             </h1>
+
 
             <p>
               FastAPI + PostgreSQL +
@@ -971,20 +1209,23 @@ function App() {
           <form
             className="auth-card"
             onSubmit={
-              authMode === "login"
+              authMode ===
+              "login"
                 ? handleLogin
                 : handleRegister
             }
           >
             <span className="small-title">
-              {authMode === "login"
+              {authMode ===
+              "login"
                 ? "С ВОЗВРАЩЕНИЕМ"
                 : "НОВЫЙ АККАУНТ"}
             </span>
 
 
             <h2>
-              {authMode === "login"
+              {authMode ===
+              "login"
                 ? "Войти"
                 : "Регистрация"}
             </h2>
@@ -1011,9 +1252,12 @@ function App() {
                 type="text"
                 placeholder="vlad123"
                 value={username}
-                onChange={(event) =>
+                onChange={(
+                  event
+                ) =>
                   setUsername(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 autoComplete="username"
@@ -1031,13 +1275,17 @@ function App() {
                 type="password"
                 placeholder="Минимум 8 символов"
                 value={password}
-                onChange={(event) =>
+                onChange={(
+                  event
+                ) =>
                   setPassword(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 autoComplete={
-                  authMode === "login"
+                  authMode ===
+                  "login"
                     ? "current-password"
                     : "new-password"
                 }
@@ -1059,9 +1307,12 @@ function App() {
                   value={
                     repeatPassword
                   }
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     setRepeatPassword(
-                      event.target.value
+                      event.target
+                        .value
                     )
                   }
                   autoComplete="new-password"
@@ -1075,7 +1326,9 @@ function App() {
 
             <button
               className="primary-button"
-              disabled={authLoading}
+              disabled={
+                authLoading
+              }
             >
               {authLoading
                 ? "Подождите..."
@@ -1092,17 +1345,24 @@ function App() {
               onClick={() => {
                 setError("");
                 setMessage("");
+
                 setPassword("");
-                setRepeatPassword("");
+
+                setRepeatPassword(
+                  ""
+                );
+
 
                 setAuthMode(
-                  authMode === "login"
+                  authMode ===
+                    "login"
                     ? "register"
                     : "login"
                 );
               }}
             >
-              {authMode === "login"
+              {authMode ===
+              "login"
                 ? "Нет аккаунта? Зарегистрироваться"
                 : "Уже есть аккаунт? Войти"}
             </button>
@@ -1125,8 +1385,7 @@ function App() {
           (
             storage.used /
             storage.limit
-          ) *
-            100
+          ) * 100
         )
       : 0;
 
@@ -1155,8 +1414,12 @@ function App() {
 
           <button
             className="secondary-button"
-            onClick={handleLogout}
-            disabled={uploading}
+            onClick={
+              handleLogout
+            }
+            disabled={
+              uploading
+            }
           >
             Выйти
           </button>
@@ -1171,20 +1434,25 @@ function App() {
               ЛИЧНОЕ ПРОСТРАНСТВО
             </span>
 
+
             <h1>
               Твои файлы
             </h1>
 
+
             <p>
-              Загружай файлы и открывай
-              их с любого компьютера.
+              Загружай файлы и
+              открывай их с любого
+              компьютера.
             </p>
           </div>
 
 
           <button
             className="secondary-button"
-            onClick={loadData}
+            onClick={
+              loadData
+            }
             disabled={
               dataLoading ||
               uploading
@@ -1218,6 +1486,7 @@ function App() {
                 ОБЩЕЕ ХРАНИЛИЩЕ
               </span>
 
+
               <h3>
                 {storage
                   ? `${formatBytes(
@@ -1234,6 +1503,7 @@ function App() {
               <span>
                 Свободно
               </span>
+
 
               <strong>
                 {storage
@@ -1265,6 +1535,7 @@ function App() {
               % занято
             </span>
 
+
             <span>
               Общий пул для всех
               пользователей
@@ -1279,6 +1550,7 @@ function App() {
               НОВАЯ ЗАГРУЗКА
             </span>
 
+
             <h2>
               Добавить файл
             </h2>
@@ -1288,7 +1560,9 @@ function App() {
           <input
             className="file-input"
             type="file"
-            onChange={(event) => {
+            onChange={(
+              event
+            ) => {
               const file =
                 event.target
                   .files?.[0] ||
@@ -1297,7 +1571,9 @@ function App() {
 
               setError("");
               setMessage("");
-              setUploadProgress(0);
+              setUploadProgress(
+                0
+              );
 
 
               if (
@@ -1310,22 +1586,29 @@ function App() {
                   null
                 );
 
+
                 setError(
                   `Недостаточно места. Свободно ${formatBytes(
                     storage.free
                   )}`
                 );
 
+
                 event.target.value =
                   "";
+
 
                 return;
               }
 
 
-              setSelectedFile(file);
+              setSelectedFile(
+                file
+              );
             }}
-            disabled={uploading}
+            disabled={
+              uploading
+            }
           />
 
 
@@ -1335,10 +1618,14 @@ function App() {
                 ↑
               </div>
 
+
               <div>
                 <strong>
-                  {selectedFile.name}
+                  {
+                    selectedFile.name
+                  }
                 </strong>
+
 
                 <span>
                   {formatBytes(
@@ -1360,8 +1647,12 @@ function App() {
                   Загрузка в R2
                 </span>
 
+
                 <strong>
-                  {uploadProgress}%
+                  {
+                    uploadProgress
+                  }
+                  %
                 </strong>
               </div>
 
@@ -1381,7 +1672,9 @@ function App() {
 
           <button
             className="primary-button"
-            onClick={handleUpload}
+            onClick={
+              handleUpload
+            }
             disabled={
               !selectedFile ||
               uploading
@@ -1401,6 +1694,7 @@ function App() {
                 МОИ ФАЙЛЫ
               </span>
 
+
               <h2>
                 {dataLoading
                   ? "Загрузка..."
@@ -1411,83 +1705,90 @@ function App() {
 
 
           {!dataLoading &&
-            files.length === 0 && (
+            files.length ===
+              0 && (
               <div className="empty">
                 <div className="empty-icon">
                   ☁
                 </div>
 
+
                 <h3>
                   Здесь пока пусто
                 </h3>
 
+
                 <p>
-                  Загрузи первый файл.
+                  Загрузи первый
+                  файл.
                 </p>
               </div>
             )}
 
 
           <div className="file-list">
-            {files.map((file) => (
-              <div
-                className="file-row"
-                key={file.id}
-              >
-                <div className="file-info">
-                  <div className="file-icon">
-                    📄
+            {files.map(
+              (file) => (
+                <div
+                  className="file-row"
+                  key={file.id}
+                >
+                  <div className="file-info">
+                    <div className="file-icon">
+                      📄
+                    </div>
+
+
+                    <div className="file-details">
+                      <strong>
+                        {
+                          file.original_name
+                        }
+                      </strong>
+
+
+                      <span>
+                        {formatBytes(
+                          file.size
+                        )}
+
+                        {" · "}
+
+                        {formatDate(
+                          file.created_at
+                        )}
+                      </span>
+                    </div>
                   </div>
 
 
-                  <div className="file-details">
-                    <strong>
-                      {
-                        file.original_name
+                  <div className="file-actions">
+                    <button
+                      className="secondary-button"
+                      onClick={() =>
+                        handleDownload(
+                          file
+                        )
                       }
-                    </strong>
+                    >
+                      Скачать
+                    </button>
 
-                    <span>
-                      {formatBytes(
-                        file.size
-                      )}
 
-                      {" · "}
-
-                      {formatDate(
-                        file.created_at
-                      )}
-                    </span>
+                    <button
+                      className="delete-button"
+                      onClick={() =>
+                        handleDelete(
+                          file
+                        )
+                      }
+                    >
+                      Удалить
+                    </button>
                   </div>
                 </div>
-
-
-                <div className="file-actions">
-                  <button
-                    className="secondary-button"
-                    onClick={() =>
-                      handleDownload(
-                        file
-                      )
-                    }
-                  >
-                    Скачать
-                  </button>
-
-
-                  <button
-                    className="delete-button"
-                    onClick={() =>
-                      handleDelete(
-                        file
-                      )
-                    }
-                  >
-                    Удалить
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            )}
           </div>
         </section>
       </main>
