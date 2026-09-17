@@ -1088,3 +1088,230 @@ input:focus {
       18px;
   }
 }
+
+/* ---------------------------
+   Backend status
+--------------------------- */
+
+.backend-status {
+  display: flex;
+  flex-direction: column;
+
+  gap: 7px;
+}
+
+
+.backend-status-button {
+  min-height: 40px;
+
+  padding:
+    0
+    14px;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 9px;
+
+  border:
+    1px solid #2b3548;
+
+  border-radius: 10px;
+
+  color: #dbe1ed;
+
+  background: #111823;
+
+  font-weight: 650;
+
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
+}
+
+
+.backend-status-button:hover:not(:disabled) {
+  transform:
+    translateY(-1px);
+
+  background: #17202f;
+}
+
+
+.backend-status-dot {
+  width: 8px;
+  height: 8px;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  background: #7f8a9e;
+}
+
+
+/* проверяем */
+
+.backend-status-button.checking
+.backend-status-dot {
+  background: #91a4ff;
+
+  animation:
+    backendPulse
+    1s
+    infinite;
+}
+
+
+/* сервер спит */
+
+.backend-status-button.waking {
+  border-color:
+    rgba(
+      255,
+      190,
+      90,
+      0.3
+    );
+
+  color: #ffd59a;
+}
+
+
+.backend-status-button.waking
+.backend-status-dot {
+  background: #f2b95f;
+
+  animation:
+    backendPulse
+    1s
+    infinite;
+}
+
+
+/* работает */
+
+.backend-status-button.online {
+  border-color:
+    rgba(
+      90,
+      220,
+      145,
+      0.28
+    );
+
+  color: #b9f3d1;
+
+  background:
+    rgba(
+      75,
+      200,
+      125,
+      0.07
+    );
+}
+
+
+.backend-status-button.online
+.backend-status-dot {
+  background: #69da9d;
+}
+
+
+/* недоступен */
+
+.backend-status-button.offline {
+  border-color:
+    rgba(
+      255,
+      100,
+      100,
+      0.25
+    );
+
+  color: #ffb7b7;
+}
+
+
+.backend-status-button.offline
+.backend-status-dot {
+  background: #ff7373;
+}
+
+
+.backend-status-message {
+  max-width: 330px;
+
+  color: #8793a8;
+
+  font-size: 12px;
+
+  line-height: 1.45;
+}
+
+
+.backend-status-message.online {
+  color: #89cda6;
+}
+
+
+.backend-status-message.waking {
+  color: #d8b477;
+}
+
+
+.backend-status-message.offline {
+  color: #d98d8d;
+}
+
+
+.hero-actions {
+  display: flex;
+
+  align-items: flex-start;
+
+  gap: 10px;
+}
+
+
+@keyframes backendPulse {
+  0% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.4;
+  }
+}
+
+
+@media (max-width: 620px) {
+  .hero-actions {
+    width: 100%;
+
+    flex-direction: column;
+  }
+
+
+  .hero-actions
+  > * {
+    width: 100%;
+  }
+
+
+  .backend-status-button {
+    width: 100%;
+  }
+
+
+  .backend-status-message {
+    max-width: none;
+  }
+}
