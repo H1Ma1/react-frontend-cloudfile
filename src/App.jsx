@@ -15,9 +15,9 @@ const PENDING_UPLOAD_KEY =
 let refreshPromise = null;
 
 
-// --------------------------------------------------
-// ПРЕОБРАЗОВАНИЕ ОШИБКИ FASTAPI В НОРМАЛЬНЫЙ ТЕКСТ
-// --------------------------------------------------
+// ==================================================
+// ОШИБКИ FASTAPI
+// ==================================================
 
 function getApiErrorMessage(
   data,
@@ -28,11 +28,6 @@ function getApiErrorMessage(
   }
 
 
-  // Обычная FastAPI ошибка:
-  //
-  // {
-  //   "detail": "Invalid username or password"
-  // }
   if (
     typeof data.detail ===
     "string"
@@ -41,17 +36,6 @@ function getApiErrorMessage(
   }
 
 
-  // Pydantic / FastAPI validation error:
-  //
-  // {
-  //   "detail": [
-  //     {
-  //       "loc": ["body", "password"],
-  //       "msg": "...",
-  //       "type": "..."
-  //     }
-  //   ]
-  // }
   if (
     Array.isArray(
       data.detail
@@ -86,7 +70,6 @@ function getApiErrorMessage(
   }
 
 
-  // Иногда detail может быть объектом.
   if (
     data.detail &&
     typeof data.detail ===
@@ -122,9 +105,9 @@ function getApiErrorMessage(
 }
 
 
-// --------------------------------------------------
-// REFRESH ACCESS TOKEN
-// --------------------------------------------------
+// ==================================================
+// REFRESH TOKEN
+// ==================================================
 
 async function refreshAccessToken() {
   if (!refreshPromise) {
@@ -150,9 +133,9 @@ async function refreshAccessToken() {
 }
 
 
-// --------------------------------------------------
-// ОБЩАЯ ФУНКЦИЯ ДЛЯ FASTAPI
-// --------------------------------------------------
+// ==================================================
+// ОБЩИЙ API REQUEST
+// ==================================================
 
 async function apiRequest(
   path,
@@ -196,8 +179,6 @@ async function apiRequest(
   }
 
 
-  // Если access token протух,
-  // пробуем refresh token.
   if (
     response.status === 401 &&
     tryRefresh &&
@@ -244,9 +225,9 @@ async function apiRequest(
 }
 
 
-// --------------------------------------------------
-// ФОРМАТИРОВАНИЕ РАЗМЕРА
-// --------------------------------------------------
+// ==================================================
+// FORMAT BYTES
+// ==================================================
 
 function formatBytes(bytes) {
   if (
@@ -290,9 +271,9 @@ function formatBytes(bytes) {
 }
 
 
-// --------------------------------------------------
-// ФОРМАТИРОВАНИЕ ДАТЫ
-// --------------------------------------------------
+// ==================================================
+// FORMAT DATE
+// ==================================================
 
 function formatDate(date) {
   if (!date) {
@@ -306,9 +287,231 @@ function formatDate(date) {
 }
 
 
-// --------------------------------------------------
+// ==================================================
+// BACKEND STATUS BUTTON
+// ==================================================
+
+function BackendStatusButton() {
+  const [
+    status,
+    setStatus,
+  ] = useState("idle");
+
+
+  const [
+    statusMessage,
+    setStatusMessage,
+  ] = useState("");
+
+
+  async function checkBackend() {
+    if (
+      status === "checking" ||
+      status === "waking"
+    ) {
+      return;
+    }
+
+
+    setStatus("checking");
+
+    setStatusMessage(
+      "Проверяем backend..."
+    );
+
+
+    let slowRequest = false;
+
+
+    const wakeTimer =
+      setTimeout(() => {
+        slowRequest = true;
+
+
+        setStatus(
+          "waking"
+        );
+
+
+        setStatusMessage(
+          "Backend, похоже, спит. Пробуждаем его. Это может занять около минуты..."
+        );
+      }, 4000);
+
+
+    const controller =
+      new AbortController();
+
+
+    const requestTimeout =
+      setTimeout(() => {
+        controller.abort();
+      }, 90000);
+
+
+    const startedAt =
+      Date.now();
+
+
+    try {
+      const response =
+        await fetch(
+          `${API_URL}/health`,
+          {
+            method: "GET",
+
+            signal:
+              controller.signal,
+
+            cache: "no-store",
+          }
+        );
+
+
+      clearTimeout(
+        wakeTimer
+      );
+
+
+      clearTimeout(
+        requestTimeout
+      );
+
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+
+      const elapsed =
+        Math.max(
+          1,
+          Math.round(
+            (
+              Date.now() -
+              startedAt
+            ) / 1000
+          )
+        );
+
+
+      setStatus(
+        "online"
+      );
+
+
+      if (
+        slowRequest ||
+        elapsed >= 4
+      ) {
+        setStatusMessage(
+          `Backend проснулся и работает. Ответ получен за ${elapsed} сек.`
+        );
+      } else {
+        setStatusMessage(
+          `Backend работает. Ответ получен за ${elapsed} сек.`
+        );
+      }
+    } catch (err) {
+      clearTimeout(
+        wakeTimer
+      );
+
+
+      clearTimeout(
+        requestTimeout
+      );
+
+
+      console.error(
+        "Backend health error:",
+        err
+      );
+
+
+      setStatus(
+        "offline"
+      );
+
+
+      if (
+        err.name ===
+        "AbortError"
+      ) {
+        setStatusMessage(
+          "Backend не ответил за 90 секунд."
+        );
+      } else {
+        setStatusMessage(
+          "Не удалось подключиться к backend."
+        );
+      }
+    }
+  }
+
+
+  return (
+    <div className="backend-status">
+      <button
+        type="button"
+        className={`backend-status-button ${status}`}
+        onClick={
+          checkBackend
+        }
+        disabled={
+          status ===
+            "checking" ||
+          status ===
+            "waking"
+        }
+      >
+        <span
+          className="backend-status-dot"
+        />
+
+
+        {status === "idle" &&
+          "Проверить backend"}
+
+
+        {status ===
+          "checking" &&
+          "Проверяем..."}
+
+
+        {status ===
+          "waking" &&
+          "Пробуждаем backend..."}
+
+
+        {status ===
+          "online" &&
+          "Backend работает"}
+
+
+        {status ===
+          "offline" &&
+          "Проверить снова"}
+      </button>
+
+
+      {statusMessage && (
+        <div
+          className={`backend-status-message ${status}`}
+        >
+          {statusMessage}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ==================================================
 // APP
-// --------------------------------------------------
+// ==================================================
 
 function App() {
   const [
@@ -409,9 +612,9 @@ function App() {
   ] = useState("");
 
 
-  // --------------------------------------------------
-  // СТАРТ ПРИЛОЖЕНИЯ
-  // --------------------------------------------------
+  // ==================================================
+  // START
+  // ==================================================
 
   useEffect(() => {
     async function startApp() {
@@ -426,9 +629,6 @@ function App() {
       }
 
 
-      // Если пользователь обновил страницу
-      // во время загрузки большого файла,
-      // здесь останется pending ID.
       const pendingId =
         localStorage.getItem(
           PENDING_UPLOAD_KEY
@@ -447,7 +647,7 @@ function App() {
           cleanupError
         ) {
           console.error(
-            "Не удалось очистить pending upload:",
+            "Pending cleanup error:",
             cleanupError
           );
         } finally {
@@ -460,6 +660,7 @@ function App() {
 
       await loadData();
 
+
       setLoadingUser(false);
     }
 
@@ -468,9 +669,9 @@ function App() {
   }, []);
 
 
-  // --------------------------------------------------
-  // ПРОВЕРКА ТЕКУЩЕЙ СЕССИИ
-  // --------------------------------------------------
+  // ==================================================
+  // CURRENT USER
+  // ==================================================
 
   async function checkCurrentUser() {
     try {
@@ -495,9 +696,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
-  // ЗАГРУЗКА СПИСКА ФАЙЛОВ И STORAGE
-  // --------------------------------------------------
+  // ==================================================
+  // LOAD FILES + STORAGE
+  // ==================================================
 
   async function loadData() {
     setDataLoading(true);
@@ -537,9 +738,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
+  // ==================================================
   // REGISTER
-  // --------------------------------------------------
+  // ==================================================
 
   async function handleRegister(
     event
@@ -612,9 +813,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
+  // ==================================================
   // LOGIN
-  // --------------------------------------------------
+  // ==================================================
 
   async function handleLogin(
     event
@@ -708,9 +909,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
+  // ==================================================
   // LOGOUT
-  // --------------------------------------------------
+  // ==================================================
 
   async function handleLogout() {
     setError("");
@@ -732,8 +933,8 @@ function App() {
           }
         );
       } catch {
-        // backend cleanup потом
-        // подстрахует.
+        // cleanup на backend
+        // потом подстрахует
       }
 
 
@@ -772,9 +973,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
-  // ПРЯМАЯ ЗАГРУЗКА В R2
-  // --------------------------------------------------
+  // ==================================================
+  // UPLOAD DIRECTLY TO R2
+  // ==================================================
 
   function uploadFileToR2(
     uploadUrl,
@@ -865,9 +1066,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
-  // ОТМЕНА PENDING
-  // --------------------------------------------------
+  // ==================================================
+  // CANCEL PENDING
+  // ==================================================
 
   async function cancelPendingUpload(
     fileId
@@ -888,7 +1089,7 @@ function App() {
       cancelError
     ) {
       console.error(
-        "Не удалось отменить pending:",
+        "Pending cancel error:",
         cancelError
       );
     } finally {
@@ -909,9 +1110,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
-  // ПОЛНЫЙ UPLOAD FLOW
-  // --------------------------------------------------
+  // ==================================================
+  // UPLOAD FLOW
+  // ==================================================
 
   async function handleUpload() {
     if (
@@ -949,9 +1150,6 @@ function App() {
       }
 
 
-      // 1.
-      // Backend резервирует место
-      // и выдаёт presigned URL.
       const prepared =
         await apiRequest(
           "/files/upload-url",
@@ -987,17 +1185,12 @@ function App() {
       await loadData();
 
 
-      // 2.
-      // Файл идёт напрямую
-      // browser -> Cloudflare R2.
       await uploadFileToR2(
         prepared.upload_url,
         selectedFile
       );
 
 
-      // 3.
-      // Подтверждаем загрузку.
       await apiRequest(
         `/files/${preparedFileId}/confirm`,
         {
@@ -1055,9 +1248,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
+  // ==================================================
   // DOWNLOAD
-  // --------------------------------------------------
+  // ==================================================
 
   async function handleDownload(
     file
@@ -1104,9 +1297,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
+  // ==================================================
   // DELETE
-  // --------------------------------------------------
+  // ==================================================
 
   async function handleDelete(
     file
@@ -1149,9 +1342,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
+  // ==================================================
   // LOADING
-  // --------------------------------------------------
+  // ==================================================
 
   if (loadingUser) {
     return (
@@ -1166,9 +1359,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
+  // ==================================================
   // LOGIN / REGISTER
-  // --------------------------------------------------
+  // ==================================================
 
   if (!user) {
     return (
@@ -1229,6 +1422,9 @@ function App() {
                 ? "Войти"
                 : "Регистрация"}
             </h2>
+
+
+            <BackendStatusButton />
 
 
             {error && (
@@ -1373,9 +1569,9 @@ function App() {
   }
 
 
-  // --------------------------------------------------
+  // ==================================================
   // STORAGE %
-  // --------------------------------------------------
+  // ==================================================
 
   const storagePercent =
     storage &&
@@ -1390,9 +1586,9 @@ function App() {
       : 0;
 
 
-  // --------------------------------------------------
+  // ==================================================
   // DASHBOARD
-  // --------------------------------------------------
+  // ==================================================
 
   return (
     <div className="app">
@@ -1448,20 +1644,25 @@ function App() {
           </div>
 
 
-          <button
-            className="secondary-button"
-            onClick={
-              loadData
-            }
-            disabled={
-              dataLoading ||
-              uploading
-            }
-          >
-            {dataLoading
-              ? "Обновление..."
-              : "Обновить"}
-          </button>
+          <div className="hero-actions">
+            <BackendStatusButton />
+
+
+            <button
+              className="secondary-button"
+              onClick={
+                loadData
+              }
+              disabled={
+                dataLoading ||
+                uploading
+              }
+            >
+              {dataLoading
+                ? "Обновление..."
+                : "Обновить"}
+            </button>
+          </div>
         </section>
 
 
